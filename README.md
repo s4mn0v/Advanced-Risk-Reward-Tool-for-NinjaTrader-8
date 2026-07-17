@@ -37,3 +37,32 @@ After drawing the tool on a chart by selecting the entry and stop points, you ca
 ### Important Note
 
 Any trades or investments made using this tool are at your own risk. Ensure you test the quantity auto-fill behavior on a simulated account before using it in a live environment.
+
+---
+
+AutoEntry (Strategy)
+
+SfourmAutoEntry is a companion strategy that automates the execution of trades based on the Sfourm drawing tool. It converts visual analysis into active orders by monitoring the chart for specific drawings and submitting them to the market.
+Overview
+
+The strategy detects when a Sfourm object is placed on the chart. It reads the entry, stop, and reward prices, calculates the appropriate position size based on the tool's internal "StopLoss (USD)" setting, and manages the entry and exit orders automatically.
+Key Features
+
+- Automated Order Submission: Sends limit orders at the entry price as soon as the drawing is finalized.
+- Dynamic Scaling (Scaling Out): If "Partial Levels" is enabled, the strategy splits the total position into multiple Take Profit orders distributed across the R:R levels.
+- Risk Synchronization: Automatically applies the calculated Stop Loss and Profit Targets to each execution.
+- Tag Filtering: Can be configured to trade only specific drawings via the "Tag" parameter or handle every Sfourm object found on the chart.
+- Precision Management: Ensures the tool is not in "Editing" mode before triggering to avoid entries based on accidental movements.
+
+Parameters
+
+- Tag del Sfourm: Filter to target specific drawings. Leave empty to process any Sfourm tool.
+- Máximo de contratos: A secondary safety ceiling for the strategy's total exposure.
+- Usar niveles parciales: Determines if the strategy scaling out into multiple targets or uses a single final target.
+
+Installation
+
+Copy the SfourmAutoEntry.cs file into:
+C:\Users\<YourUsername>\Documents\NinjaTrader 8\bin\Custom\Strategies
+
+To use it, right-click your chart, select Strategies, and add SfourmAutoEntry. Ensure "Enabled" is checked.
