@@ -49,22 +49,46 @@ namespace NinjaTrader.NinjaScript.Strategies
 			}
 		}
 
+		private bool loggedChartControlWarning = false;
+		private bool loggedRealtimeStart		= false;
+
 		protected override void OnBarUpdate()
 		{
 			if (BarsInProgress != 0)
 				return;
 
+			if (State != State.Realtime)
+				return;
+
+			if (!loggedRealtimeStart)
+			{
+				Print(string.Format("{0}: strategy en tiempo real. ChartControl {1}.",
+					Name, ChartControl == null ? "es NULL (agrégala desde el CHART, clic derecho > Strategies, no desde el Control Center)" : "OK"));
+				loggedRealtimeStart = true;
+			}
+
 			if (Position.MarketPosition != MarketPosition.Flat)
 				return;
 
 			if (ChartControl == null)
+			{
+				if (!loggedChartControlWarning)
+				{
+					Print(string.Format("{0}: ChartControl es NULL, no se puede leer el Sfourm. Debes agregar esta strategy desde el chart (clic derecho > Strategies), no desde la pestaña Strategies del Control Center.", Name));
+					loggedChartControlWarning = true;
+				}
 				return;
+			}
+
+			bool foundAnySfourm = false;
 
 			foreach (DrawingTool draw in DrawObjects.ToList())
 			{
 				Sfourm sfourm = draw as Sfourm;
 				if (sfourm == null)
 					continue;
+
+				foundAnySfourm = true;
 
 				if (!string.IsNullOrEmpty(DrawingToolTag) && sfourm.Tag != DrawingToolTag)
 					continue;
@@ -77,6 +101,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				SubmitFromDrawingTool(sfourm);
 			}
+
+			if (!foundAnySfourm && CurrentBar % 200 == 0)
+				Print(string.Format("{0}: no se encontró ningún Sfourm dibujado en este chart todavía.", Name));
 		}
 
 		private void SubmitFromDrawingTool(Sfourm sfourm)
@@ -116,13 +143,13 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 				string signalName = string.Format("Sfourm_{0}_L{1}", sfourm.Tag, i);
 
+				SetStopLoss(signalName, CalculationMode.Price, stopPrice, false);
+				SetProfitTarget(signalName, CalculationMode.Price, levelPrice);
+
 				if (isLong)
 					EnterLongLimit(0, true, levelQty, entryPrice, signalName);
 				else
 					EnterShortLimit(0, true, levelQty, entryPrice, signalName);
-
-				SetStopLoss(signalName, CalculationMode.Price, stopPrice, false);
-				SetProfitTarget(signalName, CalculationMode.Price, levelPrice);
 
 				Print(string.Format("{0} [{1}/{2}]: {3} enviado. qty={4} entry={5} stop={6} target={7}",
 					sfourm.Tag, i, levels, isLong ? "LONG" : "SHORT", levelQty, entryPrice, stopPrice, levelPrice));
