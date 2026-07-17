@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using NinjaTrader.Cbi;
 using NinjaTrader.Core.FloatingPoint;
 using NinjaTrader.NinjaScript;
@@ -11,10 +14,17 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public class SfourmAutoEntry : Strategy
 	{
-		private readonly HashSet<string> processedTags = new HashSet<string>();
+		private string activeTag = null;
+
+		private Grid	buttonsGrid;
+		private Button	buyButton;
+		private Button	sellButton;
+
+		private bool loggedChartControlWarning = false;
+		private bool loggedRealtimeStart		= false;
 
 		[NinjaScriptProperty]
-		[Display(Name = "Tag del Sfourm (vacío = cualquiera)", Order = 1, GroupName = "Parameters")]
+		[Display(Name = "Tag del Sfourm (vacío = el más reciente)", Order = 1, GroupName = "Parameters")]
 		public string DrawingToolTag { get; set; }
 
 		[Range(1, int.MaxValue)]
@@ -26,11 +36,15 @@ namespace NinjaTrader.NinjaScript.Strategies
 		[Display(Name = "Usar niveles parciales (TP escalonados)", Order = 3, GroupName = "Parameters")]
 		public bool UsePartialLevels { get; set; }
 
+		[NinjaScriptProperty]
+		[Display(Name = "Entrar automático al dibujar (sin botón)", Order = 4, GroupName = "Parameters")]
+		public bool AutoEnter { get; set; }
+
 		protected override void OnStateChange()
 		{
 			if (State == State.SetDefaults)
 			{
-				Description					= "Toma una entrada (o varias parciales) usando Entry/Risk/Reward y el StopLoss($) definidos en una herramienta Sfourm dibujada en el gráfico.";
+				Description					= "Botones Comprar/Vender Limit (abajo a la derecha del chart) que envían una orden límite al precio del Entry del Sfourm dibujado, con el SL/TP ya pre-cargados.";
 				Name						= "SfourmAutoEntry";
 				Calculate					= Calculate.OnEachTick;
 				EntriesPerDirection			= 20;
@@ -39,18 +53,97 @@ namespace NinjaTrader.NinjaScript.Strategies
 				ExitOnSessionCloseSeconds	= 30;
 				StartBehavior				= StartBehavior.WaitUntilFlat;
 				TimeInForce					= TimeInForce.Day;
-				RealtimeErrorHandling		= RealtimeErrorHandling.StopCancelClose;
+				RealtimeErrorHandling		= RealtimeErrorHandling.IgnoreAllErrors;
 				StopTargetHandling			= StopTargetHandling.PerEntryExecution;
 				BarsRequiredToTrade			= 0;
 				IsInstantiatedOnEachOptimizationIteration = true;
 				DrawingToolTag				= string.Empty;
 				MaxContracts				= 100;
 				UsePartialLevels			= true;
+				AutoEnter					= false;
+			}
+			else if (State == State.DataLoaded)
+			{
+				if (ChartControl != null)
+					ChartControl.Dispatcher.InvokeAsync(new Action(CreateWpfControls));
+			}
+			else if (State == State.Terminated)
+			{
+				if (ChartControl != null)
+					ChartControl.Dispatcher.InvokeAsync(new Action(RemoveWpfControls));
 			}
 		}
 
-		private bool loggedChartControlWarning = false;
-		private bool loggedRealtimeStart		= false;
+
+		private void CreateWpfControls()
+		{
+			if (ChartControl == null || buttonsGrid != null)
+				return;
+
+			buttonsGrid = new Grid
+			{
+				Name				= "SfourmButtonsGrid",
+				HorizontalAlignment	= HorizontalAlignment.Right,
+				VerticalAlignment	= VerticalAlignment.Bottom,
+				Margin				= new Thickness(6)
+			};
+			buttonsGrid.ColumnDefinitions.Add(new ColumnDefinition());
+			buttonsGrid.ColumnDefinitions.Add(new ColumnDefinition());
+
+			buyButton = new Button
+			{
+				Content		= "Comprar Limit",
+				Width		= 100,
+				Margin		= new Thickness(2),
+				Background	= Brushes.SeaGreen,
+				Foreground	= Brushes.White
+			};
+			sellButton = new Button
+			{
+				Content		= "Vender Limit",
+				Width		= 100,
+				Margin		= new Thickness(2),
+				Background	= Brushes.Crimson,
+				Foreground	= Brushes.White
+			};
+
+			Grid.SetColumn(buyButton, 0);
+			Grid.SetColumn(sellButton, 1);
+
+			buyButton.Click		+= OnBuyButtonClick;
+			sellButton.Click	+= OnSellButtonClick;
+
+			buttonsGrid.Children.Add(buyButton);
+			buttonsGrid.Children.Add(sellButton);
+
+			UserControlCollection.Add(buttonsGrid);
+		}
+
+		private void RemoveWpfControls()
+		{
+			if (buyButton != null)
+				buyButton.Click -= OnBuyButtonClick;
+			if (sellButton != null)
+				sellButton.Click -= OnSellButtonClick;
+
+			if (buttonsGrid != null)
+				UserControlCollection.Remove(buttonsGrid);
+
+			buttonsGrid	= null;
+			buyButton	= null;
+			sellButton	= null;
+		}
+
+		private void OnBuyButtonClick(object sender, RoutedEventArgs e)
+		{
+			TriggerManualEntry(true);
+		}
+
+		private void OnSellButtonClick(object sender, RoutedEventArgs e)
+		{
+			TriggerManualEntry(false);
+		}
+
 
 		protected override void OnBarUpdate()
 		{
@@ -67,6 +160,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 				loggedRealtimeStart = true;
 			}
 
+			if (!AutoEnter)
+				return;
+
 			if (Position.MarketPosition != MarketPosition.Flat)
 				return;
 
@@ -74,13 +170,26 @@ namespace NinjaTrader.NinjaScript.Strategies
 			{
 				if (!loggedChartControlWarning)
 				{
-					Print(string.Format("{0}: ChartControl es NULL, no se puede leer el Sfourm. Debes agregar esta strategy desde el chart (clic derecho > Strategies), no desde la pestaña Strategies del Control Center.", Name));
+					Print(string.Format("{0}: ChartControl es NULL, no se puede leer el Sfourm. Agrega esta strategy desde el chart (clic derecho > Strategies).", Name));
 					loggedChartControlWarning = true;
 				}
 				return;
 			}
 
-			bool foundAnySfourm = false;
+			Sfourm sfourm = FindSfourm();
+			if (sfourm == null)
+				return;
+
+			bool isLong = sfourm.RiskAnchor.Price < sfourm.EntryAnchor.Price;
+			SubmitOrders(sfourm, isLong, isMarketOrder: false);
+		}
+
+		private Sfourm FindSfourm()
+		{
+			if (ChartControl == null)
+				return null;
+
+			Sfourm best = null;
 
 			foreach (DrawingTool draw in DrawObjects.ToList())
 			{
@@ -88,26 +197,53 @@ namespace NinjaTrader.NinjaScript.Strategies
 				if (sfourm == null)
 					continue;
 
-				foundAnySfourm = true;
-
 				if (!string.IsNullOrEmpty(DrawingToolTag) && sfourm.Tag != DrawingToolTag)
-					continue;
-
-				if (processedTags.Contains(sfourm.Tag))
 					continue;
 
 				if (sfourm.EntryAnchor.IsEditing || sfourm.RiskAnchor.IsEditing || sfourm.RewardAnchor.IsEditing)
 					continue;
 
-				SubmitFromDrawingTool(sfourm);
+				if (best == null || sfourm.EntryAnchor.Time >= best.EntryAnchor.Time)
+					best = sfourm;
 			}
 
-			if (!foundAnySfourm && CurrentBar % 200 == 0)
-				Print(string.Format("{0}: no se encontró ningún Sfourm dibujado en este chart todavía.", Name));
+			return best;
 		}
 
-		private void SubmitFromDrawingTool(Sfourm sfourm)
+		private void TriggerManualEntry(bool wantLong)
 		{
+			if (Position.MarketPosition != MarketPosition.Flat)
+			{
+				Print(string.Format("{0}: ya hay una posición abierta, se ignora el click.", Name));
+				return;
+			}
+
+			Sfourm sfourm = FindSfourm();
+			if (sfourm == null)
+			{
+				Print(string.Format("{0}: no se encontró un Sfourm válido (terminado de dibujar) en el chart.", Name));
+				return;
+			}
+
+			bool toolIsLong = sfourm.RiskAnchor.Price < sfourm.EntryAnchor.Price;
+			if (toolIsLong != wantLong)
+			{
+				Print(string.Format("{0}: el botón presionado ({1}) no coincide con la dirección del Sfourm dibujado ({2}). No se envió ninguna orden.",
+					Name, wantLong ? "Comprar" : "Vender", toolIsLong ? "Long" : "Short"));
+				return;
+			}
+
+			SubmitOrders(sfourm, wantLong, isMarketOrder: false);
+		}
+
+		private void SubmitOrders(Sfourm sfourm, bool isLong, bool isMarketOrder)
+		{
+			if (activeTag != null)
+			{
+				Print(string.Format("{0}: ya hay una orden/posición en curso ({1}). Esperá a que se cierre para usar los botones de nuevo.", Name, activeTag));
+				return;
+			}
+
 			double entryPrice	= Instrument.MasterInstrument.RoundToTickSize(sfourm.EntryAnchor.Price);
 			double stopPrice	= Instrument.MasterInstrument.RoundToTickSize(sfourm.RiskAnchor.Price);
 			double targetPrice	= Instrument.MasterInstrument.RoundToTickSize(sfourm.RewardAnchor.Price);
@@ -122,8 +258,6 @@ namespace NinjaTrader.NinjaScript.Strategies
 
 			int totalQuantity = (int)Math.Floor(Math.Abs(sfourm.StopLoss / denom));
 			totalQuantity = Math.Max(1, Math.Min(totalQuantity, MaxContracts));
-
-			bool isLong = stopPrice < entryPrice;
 
 			int levels = UsePartialLevels ? Math.Max((int)Math.Round(sfourm.Ratio), 1) : 1;
 
@@ -146,16 +280,53 @@ namespace NinjaTrader.NinjaScript.Strategies
 				SetStopLoss(signalName, CalculationMode.Price, stopPrice, false);
 				SetProfitTarget(signalName, CalculationMode.Price, levelPrice);
 
-				if (isLong)
-					EnterLongLimit(0, true, levelQty, entryPrice, signalName);
+				if (isMarketOrder)
+				{
+					if (isLong)
+						EnterLong(levelQty, signalName);
+					else
+						EnterShort(levelQty, signalName);
+				}
 				else
-					EnterShortLimit(0, true, levelQty, entryPrice, signalName);
+				{
+					if (isLong)
+						EnterLongLimit(0, true, levelQty, entryPrice, signalName);
+					else
+						EnterShortLimit(0, true, levelQty, entryPrice, signalName);
+				}
 
-				Print(string.Format("{0} [{1}/{2}]: {3} enviado. qty={4} entry={5} stop={6} target={7}",
-					sfourm.Tag, i, levels, isLong ? "LONG" : "SHORT", levelQty, entryPrice, stopPrice, levelPrice));
+				Print(string.Format("{0} [{1}/{2}]: {3} {4} enviado. qty={5} stop={6} target={7}",
+					sfourm.Tag, i, levels, isLong ? "LONG" : "SHORT", isMarketOrder ? "MKT" : "LIMIT",
+					levelQty, stopPrice, levelPrice));
 			}
 
-			processedTags.Add(sfourm.Tag);
+			activeTag = sfourm.Tag;
+		}
+
+		protected override void OnPositionUpdate(Position position, double averagePrice, int quantity, MarketPosition marketPosition)
+		{
+			if (marketPosition == MarketPosition.Flat && activeTag != null)
+			{
+				Print(string.Format("{0}: posición cerrada (flat). Botones disponibles de nuevo.", Name));
+				activeTag = null;
+			}
+		}
+
+		protected override void OnOrderUpdate(Order order, double limitPrice, double stopPrice, int quantity,
+			int filled, double averageFillPrice, OrderState orderState, DateTime time, ErrorCode error, string comment)
+		{
+			if (activeTag == null || order.Name == null)
+				return;
+
+			bool isOurEntryOrder = order.Name.StartsWith("Sfourm_" + activeTag + "_", StringComparison.Ordinal)
+				&& (order.OrderAction == OrderAction.Buy || order.OrderAction == OrderAction.SellShort);
+
+			if (isOurEntryOrder && (orderState == OrderState.Cancelled || orderState == OrderState.Rejected)
+				&& Position.MarketPosition == MarketPosition.Flat)
+			{
+				Print(string.Format("{0}: la entrada '{1}' fue {2}. Botones disponibles de nuevo.", Name, order.Name, orderState));
+				activeTag = null;
+			}
 		}
 	}
 }
