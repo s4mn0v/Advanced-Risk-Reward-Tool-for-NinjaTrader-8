@@ -1,10 +1,38 @@
 #region Using declarations
 
-using System;using System.Collections.Generic;using System.ComponentModel;using System.ComponentModel.DataAnnotations;using System.Linq;using System.Windows;using System.Windows.Input;using System.Windows.Media;using NinjaTrader.Cbi;using NinjaTrader.Core.FloatingPoint;using NinjaTrader.Gui;using NinjaTrader.Gui.Chart;using NinjaTrader.Gui.Tools;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using NinjaTrader.Cbi;
+using NinjaTrader.Core.FloatingPoint;
+using NinjaTrader.Gui;
+using NinjaTrader.Gui.Chart;
+using NinjaTrader.Gui.Tools;
 
 #endregion
 
-namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool{private const int		cursorSensitivity		= 15;private ChartAnchor		editingAnchor;private double			entryPrice;private bool			needsRatioUpdate		= true;private double			ratio					= 2;private double			risk;private double			reward;private double			stopPrice;private double			targetPrice;private double			textleftPoint;private	double			textRightPoint;private double 			contracts;private double			lastAppliedContracts	= double.MinValue; // avoids re-invoking the UI thread every render frame
+namespace NinjaTrader.NinjaScript.DrawingTools
+{
+public class Sfourm : DrawingTool
+{
+	private const int		cursorSensitivity		= 15;
+	private ChartAnchor		editingAnchor;
+	private double			entryPrice;
+	private bool			needsRatioUpdate		= true;
+	private double			ratio					= 2;
+	private double			risk;
+	private double			reward;
+	private double			stopPrice;
+	private double			targetPrice;
+	private double			textleftPoint;
+	private	double			textRightPoint;
+	private double 			contracts;
+	private double			lastAppliedContracts	= double.MinValue;
 
 	private NinjaTrader.Gui.Tools.QuantityUpDown quantitySelector;
 
@@ -49,6 +77,11 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 	[Display(ResourceType = typeof(Custom.Resource), Name = "Fondo del Target", GroupName = "NinjaScriptLines", Order = 7)]
 	public Stroke			TargetLineStrokeBack 		{ get; set; }
 
+	[Display(ResourceType = typeof(Custom.Resource), Name = "Stop Real (posicion ejecutada)", GroupName = "NinjaScriptLines", Order = 8)]
+	public Stroke			StopLineStrokeReal 			{ get; set; }
+	[Display(ResourceType = typeof(Custom.Resource), Name = "Target Real (posicion ejecutada)", GroupName = "NinjaScriptLines", Order = 9)]
+	public Stroke			TargetLineStrokeReal 		{ get; set; }
+
 	public override IEnumerable<ChartAnchor> Anchors { get { return new[] { EntryAnchor, RiskAnchor, RewardAnchor }; } }
 
 	[Display(ResourceType = typeof(Custom.Resource), Name = "NinjaScriptDrawingToolFibonacciRetracementsExtendLinesRight", GroupName = "NinjaScriptLines", Order = 2)]
@@ -73,7 +106,30 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 	[Display(ResourceType = typeof(Custom.Resource), Name = "Max Contratos", GroupName = "NinjaScriptGeneral", Order = 0)]
 	public int MaxContracts { get; set; }
 
+	[Display(ResourceType = typeof(Custom.Resource), Name = "Mostrar P&L Real de Posicion Ejecutada", GroupName = "NinjaScriptGeneral", Order = 0)]
+	public bool ShowRealPositionPnL { get; set; }
+
+	[Display(ResourceType = typeof(Custom.Resource), Name = "Forzar Riesgo Maximo Fijo", GroupName = "NinjaScriptGeneral", Order = 0)]
+	public bool EnforceFixedStopLoss { get; set; }
+
 	public override bool SupportsAlerts { get { return true; } }
+
+	private Position GetOpenPosition()
+	{
+		if (!ShowRealPositionPnL || AttachedTo == null || AttachedTo.Instrument == null)
+			return null;
+
+		try
+		{
+			return Account.All
+				.SelectMany(a => a.Positions)
+				.FirstOrDefault(p => p.Instrument == AttachedTo.Instrument && p.MarketPosition != MarketPosition.Flat);
+		}
+		catch
+		{
+			return null;
+		}
+	}
 
 	private void DrawPriceText(ChartAnchor anchor, Point point, double price, ChartControl chartControl, ChartPanel chartPanel, ChartScale chartScale)
 	{
@@ -95,8 +151,10 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 		textleftPoint	= RiskAnchor.GetPoint(chartControl, chartPanel, chartScale).X;
 		textRightPoint	= EntryAnchor.GetPoint(chartControl, chartPanel, chartScale).X;
 
-		if (anchor == RewardAnchor)		color = TargetLineStroke;
-		else if (anchor == RiskAnchor)	color = StopLineStroke;
+		bool hasRealPosition = GetOpenPosition() != null;
+
+		if (anchor == RewardAnchor)		color = hasRealPosition ? TargetLineStrokeReal : TargetLineStroke;
+		else if (anchor == RiskAnchor)	color = hasRealPosition ? StopLineStrokeReal : StopLineStroke;
 		else if (anchor == EntryAnchor)	color = EntryLineStroke;
 		else							color = AnchorLineStroke;
 
@@ -200,8 +258,10 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 		textleftPoint	= RiskAnchor.GetPoint(chartControl, chartPanel, chartScale).X;
 		textRightPoint	= EntryAnchor.GetPoint(chartControl, chartPanel, chartScale).X;
 
-		if (anchor == RewardAnchor)		color = TargetLineStroke;
-		else if (anchor == RiskAnchor)	color = StopLineStroke;
+		bool hasRealPosition = GetOpenPosition() != null;
+
+		if (anchor == RewardAnchor)		color = hasRealPosition ? TargetLineStrokeReal : TargetLineStroke;
+		else if (anchor == RiskAnchor)	color = hasRealPosition ? StopLineStrokeReal : StopLineStroke;
 		else if (anchor == EntryAnchor)	color = EntryLineStroke;
 		else							color = AnchorLineStroke;
 
@@ -330,6 +390,34 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 		return denom.ApproxCompare(0) == 0 ? 0 : Math.Round(Math.Abs(StopLoss / denom), 2);
 	}
 
+	private void ClampStopToFixedRisk()
+	{
+		if (!EnforceFixedStopLoss || AttachedTo == null || StopLoss <= 0)
+			return;
+
+		double pointValue = AttachedTo.Instrument.MasterInstrument.PointValue;
+		if (pointValue.ApproxCompare(0) == 0)
+			return;
+
+		double entry = AttachedTo.Instrument.MasterInstrument.RoundToTickSize(EntryAnchor.Price);
+		double stop  = AttachedTo.Instrument.MasterInstrument.RoundToTickSize(RiskAnchor.Price);
+
+		double denom = (stop - entry) * pointValue;
+		if (denom.ApproxCompare(0) == 0)
+			return;
+
+		double neededContracts = Math.Abs(StopLoss / denom);
+
+		if (neededContracts < 1)
+		{
+			double maxDistance = StopLoss / pointValue;
+			double direction   = stop < entry ? -1 : 1;
+			double clampedStop = AttachedTo.Instrument.MasterInstrument.RoundToTickSize(entry + direction * maxDistance);
+
+			RiskAnchor.Price = clampedStop;
+		}
+	}
+
 	private string GetPriceString(double price, ChartBars chartBars)
 	{
 		string priceString;
@@ -376,17 +464,41 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 				break;
 		}
 
-		var flatFormat = "C:{0} ML:${1} R:R 1:{2} {3}{4}";
+		Position openPosition = ShowRealPositionPnL ? GetOpenPosition() : null;
+
 		var flatFormatEnt = "{0}";
 		string str;
 
-		var levelType = "SL: ";
-		str = string.Format(flatFormat, contracts.ToString(), StopLoss, ratio, levelType, priceString);
+		if (openPosition != null)
+		{
+			double realQty		= Math.Abs(openPosition.Quantity);
+			double realDollar	= Math.Round(Math.Abs((price - yValueEntry) * pointValue) * realQty, 2);
+
+			str = string.Format("SL REAL ({0} cont.): -{1}", realQty, Core.Globals.FormatCurrency(realDollar));
+		}
+		else
+		{
+			var flatFormat = "C:{0} ML:${1} R:R 1:{2} {3}{4}";
+			var levelType	= "SL: ";
+			str = string.Format(flatFormat, contracts.ToString(), StopLoss, ratio, levelType, priceString);
+		}
 
 		if(pct == 0)
 		{
-			levelType = "ENTRY";
-			str = string.Format(flatFormatEnt, levelType);
+			if (openPosition != null)
+			{
+				double unrealized = 0;
+				try { unrealized = openPosition.GetUnrealizedProfitLoss(PerformanceUnit.Currency, price); }
+				catch { unrealized = 0; }
+
+				str = string.Format("ENTRY (Qty real: {0} | P&L actual: {1})",
+					Math.Abs(openPosition.Quantity), Core.Globals.FormatCurrency(unrealized));
+			}
+			else
+			{
+				string levelType = "ENTRY";
+				str = string.Format(flatFormatEnt, levelType);
+			}
 		}
 		return str;
 	}
@@ -441,10 +553,22 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			? 0
 			: Math.Round(Math.Abs((denom / ratio) * numero), 2);
 
-		var mainFormat = "RR {1}:{2} {0}{3}";
+		Position openPosition = ShowRealPositionPnL ? GetOpenPosition() : null;
 		string str;
-		var levelType = "TP: $";
-		str = string.Format(mainFormat, levelType, "1", numero, auxCurrency);
+
+		if (openPosition != null)
+		{
+			double realQty		= Math.Abs(openPosition.Quantity);
+			double realDollar	= Math.Round(auxCurrency * realQty, 2);
+
+			str = string.Format("TP 1:{0} REAL ({1} cont.): +{2}", numero, realQty, Core.Globals.FormatCurrency(realDollar));
+		}
+		else
+		{
+			var mainFormat = "RR {1}:{2} {0}{3}";
+			var levelType = "TP: $";
+			str = string.Format(mainFormat, levelType, "1", numero, auxCurrency);
+		}
 
 		return str;
 	}
@@ -592,13 +716,20 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			if (EntryAnchor.IsEditing)
 				dataPoint.CopyDataValues(EntryAnchor);
 			else if (RiskAnchor.IsEditing)
+			{
 				dataPoint.CopyDataValues(RiskAnchor);
+				ClampStopToFixedRisk();
+			}
 			else if (RewardAnchor.IsEditing)
 				dataPoint.CopyDataValues(RewardAnchor);
 		}
 		else if (DrawingState == DrawingState.Editing && editingAnchor != null)
 		{
 			dataPoint.CopyDataValues(editingAnchor);
+
+			if (editingAnchor == RiskAnchor)
+				ClampStopToFixedRisk();
+
 			if (editingAnchor != EntryAnchor)
 			{
 				if (editingAnchor != RewardAnchor && Ratio.ApproxCompare(0) != 0)
@@ -643,6 +774,9 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 		if (!modificarContratosFlag || chartControl == null)
 			return;
 
+		if (GetOpenPosition() != null)
+			return;
+
 		if (contracts.ApproxCompare(lastAppliedContracts) == 0)
 			return;
 
@@ -683,6 +817,12 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 		StopLineStroke.RenderTarget		= RenderTarget;
 		TargetLineStrokeBack.RenderTarget		= RenderTarget;
 		StopLineStrokeBack.RenderTarget		= RenderTarget;
+		StopLineStrokeReal.RenderTarget			= RenderTarget;
+		TargetLineStrokeReal.RenderTarget		= RenderTarget;
+
+		bool hasRealPosition = GetOpenPosition() != null;
+		Stroke currentStopStroke	= hasRealPosition ? StopLineStrokeReal	 : StopLineStroke;
+		Stroke currentTargetStroke	= hasRealPosition ? TargetLineStrokeReal : TargetLineStroke;
 
 		RenderTarget.AntialiasMode	= SharpDX.Direct2D1.AntialiasMode.PerPrimitive;
 		RenderTarget.DrawLine(entryPoint.ToVector2(), stopPoint.ToVector2(), AnchorLineStroke.BrushDX, AnchorLineStroke.Width, AnchorLineStroke.StrokeStyle);
@@ -725,12 +865,12 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			AnchorLineStroke.RenderTarget 	= RenderTarget;
 			RenderTarget.DrawLine(entryPoint.ToVector2(), targetPoint.ToVector2(), tmpBrush, AnchorLineStroke.Width, AnchorLineStroke.StrokeStyle);
 
-			TargetLineStroke.RenderTarget		= RenderTarget;
+			currentTargetStroke.RenderTarget		= RenderTarget;
 			SharpDX.Vector2 targetStartVector	= new SharpDX.Vector2((float)lineStartX, (float)targetPoint.Y);
 			SharpDX.Vector2 targetEndVector		= new SharpDX.Vector2((float)lineEndX, (float)targetPoint.Y);
 
-			tmpBrush = IsInHitTest ? chartControl.SelectionBrush : TargetLineStroke.BrushDX;
-			RenderTarget.DrawLine(targetStartVector, targetEndVector, tmpBrush, TargetLineStroke.Width, TargetLineStroke.StrokeStyle);
+			tmpBrush = IsInHitTest ? chartControl.SelectionBrush : currentTargetStroke.BrushDX;
+			RenderTarget.DrawLine(targetStartVector, targetEndVector, tmpBrush, currentTargetStroke.Width, currentTargetStroke.StrokeStyle);
 			if(!ShowPartialLevels)
 			{
 				DrawPriceTextPartials(RewardAnchor, targetPoint, targetPrice, chartControl, chartPanel, chartScale, (int)ratio);
@@ -741,8 +881,8 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			RenderTarget.DrawLine(entryStartVector, entryEndVector, tmpBrush, EntryLineStroke.Width, EntryLineStroke.StrokeStyle);
 			DrawPriceText(EntryAnchor, entryPoint, entryPrice, chartControl, chartPanel, chartScale);
 
-			tmpBrush = IsInHitTest ? chartControl.SelectionBrush : StopLineStroke.BrushDX;
-			RenderTarget.DrawLine(stopStartVector, stopEndVector, tmpBrush, StopLineStroke.Width, StopLineStroke.StrokeStyle);
+			tmpBrush = IsInHitTest ? chartControl.SelectionBrush : currentStopStroke.BrushDX;
+			RenderTarget.DrawLine(stopStartVector, stopEndVector, tmpBrush, currentStopStroke.Width, currentStopStroke.StrokeStyle);
 			DrawPriceText(RiskAnchor, stopPoint, stopPrice, chartControl, chartPanel, chartScale);
 
 			SharpDX.RectangleF stopRectangle = new SharpDX.RectangleF(stopStartVector.X, entryStartVector.Y, stopEndVector.X - entryStartVector.X, stopEndVector.Y - entryEndVector.Y);
@@ -757,8 +897,8 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 				{
 					SharpDX.Vector2 partialStartVector	= new SharpDX.Vector2((float)lineStartX, (float)interpolatedPoints[i].Y);
 					SharpDX.Vector2 partialEndVector		= new SharpDX.Vector2((float)lineEndX, (float)interpolatedPoints[i].Y);
-					tmpBrush = IsInHitTest ? chartControl.SelectionBrush : TargetLineStroke.BrushDX;
-					RenderTarget.DrawLine(partialStartVector, partialEndVector, tmpBrush, TargetLineStroke.Width, TargetLineStroke.StrokeStyle);
+					tmpBrush = IsInHitTest ? chartControl.SelectionBrush : currentTargetStroke.BrushDX;
+					RenderTarget.DrawLine(partialStartVector, partialEndVector, tmpBrush, currentTargetStroke.Width, currentTargetStroke.StrokeStyle);
 					DrawPriceTextPartials(RewardAnchor, interpolatedPoints[i], targetPrice, chartControl, chartPanel, chartScale, i);
 				}
 			}
@@ -782,6 +922,8 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			TargetLineStroke 			= new Stroke(Brushes.SeaGreen,	DashStyleHelper.Solid, 2f);
 			StopLineStrokeBack 			= new Stroke(Brushes.Crimson,	DashStyleHelper.Solid, 2f, 20);
 			TargetLineStrokeBack     	= new Stroke(Brushes.SeaGreen,	DashStyleHelper.Solid, 2f ,20);
+			StopLineStrokeReal			= new Stroke(Brushes.Red,		DashStyleHelper.Solid, 3f);
+			TargetLineStrokeReal		= new Stroke(Brushes.LimeGreen,	DashStyleHelper.Solid, 3f);
 			EntryAnchor					= new ChartAnchor { IsEditing = true, DrawingTool = this };
 			RiskAnchor					= new ChartAnchor { IsEditing = true, DrawingTool = this };
 			RewardAnchor				= new ChartAnchor { IsEditing = true, DrawingTool = this };
@@ -790,6 +932,8 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			RewardAnchor.DisplayName	= Custom.Resource.NinjaScriptDrawingToolRiskRewardAnchorReward;
 			ShowPartialLevels			= true;
 			modificarContratosFlag		= true;
+			ShowRealPositionPnL			= true;
+			EnforceFixedStopLoss		= true;
 			contracts					= 0.0;
 		}
 		else if (State == State.Terminated)
@@ -803,6 +947,9 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 			return;
 
 		entryPrice				= AttachedTo.Instrument.MasterInstrument.RoundToTickSize(EntryAnchor.Price);
+
+		ClampStopToFixedRisk();
+
 		stopPrice 				= AttachedTo.Instrument.MasterInstrument.RoundToTickSize(RiskAnchor.Price);
 		risk 					= entryPrice - stopPrice;
 		reward					= risk * Ratio;
@@ -828,6 +975,9 @@ namespace NinjaTrader.NinjaScript.DrawingTools{public class Sfourm : DrawingTool
 		stopPrice 				= AttachedTo.Instrument.MasterInstrument.RoundToTickSize(entryPrice - risk);
 
 		RiskAnchor.Price 		= stopPrice;
+
+		ClampStopToFixedRisk();
+
 		RiskAnchor.IsEditing	= false;
 
 		needsRatioUpdate		= false;
@@ -890,9 +1040,6 @@ public static partial class Draw
 		return sfourm;
 	}
 
-	/// <summary>
-	/// Draws a risk/reward on a chart (time-based anchors).
-	/// </summary>
 	public static Sfourm Sfourm(NinjaScriptBase owner, string tag, bool isAutoScale, DateTime entryTime, double entryY, DateTime endTime, double endY, double ratio, int instrumentquantity, double dollarcentpertick, bool tickordollarcent, bool isStop)
 	{
 		return isStop
@@ -900,9 +1047,6 @@ public static partial class Draw
 			: SfourmCore(owner, tag, isAutoScale, int.MinValue, entryTime, entryY, 0, Core.Globals.MinDate, 0, int.MinValue, endTime, endY, ratio, instrumentquantity, dollarcentpertick, tickordollarcent, false, false, null);
 	}
 
-	/// <summary>
-	/// Draws a risk/reward on a chart (bars-ago anchors).
-	/// </summary>
 	public static Sfourm Sfourm(NinjaScriptBase owner, string tag, bool isAutoScale, int entryBarsAgo, double entryY, int endBarsAgo, double endY, double ratio, int instrumentquantity, double dollarcentpertick, bool tickordollarcent, bool isStop)
 	{
 		return isStop
@@ -910,19 +1054,13 @@ public static partial class Draw
 			: SfourmCore(owner, tag, isAutoScale, entryBarsAgo, Core.Globals.MinDate, entryY, 0, Core.Globals.MinDate, 0, endBarsAgo, Core.Globals.MinDate, endY, ratio, instrumentquantity, dollarcentpertick, tickordollarcent, false, false, null);
 	}
 
-	/// <summary>
-	/// Draws a risk/reward on a chart (time-based anchors, with global/template support).
-	/// </summary>
 	public static Sfourm Sfourm(NinjaScriptBase owner, string tag, bool isAutoScale, DateTime entryTime, double entryY, DateTime endTime, double endY, double ratio, int instrumentquantity, double dollarcentpertick, bool tickordollarcent, bool isStop, bool isGlobal, string templateName)
 	{
 		return isStop
 			? SfourmCore(owner, tag, isAutoScale, int.MinValue, entryTime, entryY, int.MinValue, endTime, endY, 0, Core.Globals.MinDate, 0, ratio, instrumentquantity, dollarcentpertick, tickordollarcent, true, isGlobal, templateName)
 			: SfourmCore(owner, tag, isAutoScale, int.MinValue, entryTime, entryY, 0, Core.Globals.MinDate, 0, int.MinValue, endTime, endY, ratio, instrumentquantity, dollarcentpertick, tickordollarcent, false, isGlobal, templateName);
 	}
-
-	/// <summary>
-	/// Draws a risk/reward on a chart (bars-ago anchors, with global/template support).
-	/// </summary>
+	
 	public static Sfourm Sfourm(NinjaScriptBase owner, string tag, bool isAutoScale, int entryBarsAgo, double entryY, int endBarsAgo, double endY, double ratio, int instrumentquantity, double dollarcentpertick, bool tickordollarcent, bool isStop, bool isGlobal, string templateName)
 	{
 		return isStop
