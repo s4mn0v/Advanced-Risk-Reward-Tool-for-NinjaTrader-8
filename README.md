@@ -40,7 +40,7 @@ Any trades or investments made using this tool are at your own risk. Ensure you 
 
 ---
 
-AutoEntry (Strategy)
+# AutoEntry (Strategy)
 
 SfourmAutoEntry is a companion strategy that automates the execution of trades based on the Sfourm drawing tool. It converts visual analysis into active orders by monitoring the chart for specific drawings and submitting them to the market.
 Overview
