@@ -61,7 +61,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 					ExitOnSessionCloseSeconds	= 30;
 					StartBehavior				= StartBehavior.WaitUntilFlat;
 					TimeInForce					= TimeInForce.Day;
-					RealtimeErrorHandling		= RealtimeErrorHandling.IgnoreAllErrors;
+
+					RealtimeErrorHandling		= RealtimeErrorHandling.StopCancelClose;
+
 					StopTargetHandling			= StopTargetHandling.PerEntryExecution;
 					BarsRequiredToTrade			= 0;
 					IsInstantiatedOnEachOptimizationIteration = true;
@@ -86,6 +88,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en OnStateChange ({1}): {2}", Name, State, ex.Message));
+				throw;
 			}
 		}
 
@@ -141,6 +144,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción creando los botones: {1}", Name, ex.Message));
+				throw;
 			}
 		}
 
@@ -163,6 +167,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción removiendo los botones: {1}", Name, ex.Message));
+				throw;
 			}
 		}
 
@@ -175,13 +180,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en click Comprar: {1}", Name, ex.Message));
-			}
-			finally
-			{
-				if (buyButton != null)
-					buyButton.IsEnabled = true;
-				if (sellButton != null)
-					sellButton.IsEnabled = true;
+				throw;
 			}
 		}
 
@@ -194,13 +193,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en click Vender: {1}", Name, ex.Message));
-			}
-			finally
-			{
-				if (buyButton != null)
-					buyButton.IsEnabled = true;
-				if (sellButton != null)
-					sellButton.IsEnabled = true;
+				throw;
 			}
 		}
 
@@ -256,6 +249,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en OnBarUpdate: {1}", Name, ex.Message));
+				throw;
 			}
 		}
 
@@ -289,7 +283,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en FindSfourm: {1}", Name, ex.Message));
-				return null;
+				throw;
 			}
 		}
 
@@ -334,6 +328,25 @@ namespace NinjaTrader.NinjaScript.Strategies
 				double stopPrice	= Instrument.MasterInstrument.RoundToTickSize(sfourm.RiskAnchor.Price);
 				double targetPrice	= Instrument.MasterInstrument.RoundToTickSize(sfourm.RewardAnchor.Price);
 				double pointValue	= Instrument.MasterInstrument.PointValue;
+
+				if (!isMarketOrder)
+				{
+					double currentAsk = GetCurrentAsk();
+					double currentBid = GetCurrentBid();
+
+					if (isLong && entryPrice >= currentAsk)
+					{
+						Print(string.Format("{0}: el Entry ({1}) ya fue alcanzado/cruzado por el ask actual ({2}). NO se envía la orden (se hubiera ejecutado como si fuera mercado). Volvé a dibujar el Entry por encima del precio actual.",
+							sfourm.Tag, entryPrice, currentAsk));
+						return;
+					}
+					if (!isLong && entryPrice <= currentBid)
+					{
+						Print(string.Format("{0}: el Entry ({1}) ya fue alcanzado/cruzado por el bid actual ({2}). NO se envía la orden (se hubiera ejecutado como si fuera mercado). Volvé a dibujar el Entry por debajo del precio actual.",
+							sfourm.Tag, entryPrice, currentBid));
+						return;
+					}
+				}
 
 				double denom = Math.Abs((entryPrice - stopPrice) * pointValue);
 				if (denom.ApproxCompare(0) == 0)
@@ -395,6 +408,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en SubmitOrders: {1}", Name, ex.Message));
+				throw;
 			}
 		}
 
@@ -412,6 +426,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en OnPositionUpdate: {1}", Name, ex.Message));
+				throw;
 			}
 		}
 
@@ -437,6 +452,7 @@ namespace NinjaTrader.NinjaScript.Strategies
 			catch (Exception ex)
 			{
 				Print(string.Format("{0}: excepción en OnOrderUpdate: {1}", Name, ex.Message));
+				throw;
 			}
 		}
 	}
