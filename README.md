@@ -1,3 +1,5 @@
+<img width="1752" height="1032" alt="image" src="https://github.com/user-attachments/assets/3dd9e29e-d807-442e-808f-7f903b9d463e" />
+
 # Advanced Risk/Reward Tool for NinjaTrader 8
 
 advance-risk-reward is an enhanced Risk/Reward drawing tool that extends the native NinjaTrader utility. It is designed for traders who require precise position sizing and automation by integrating financial risk management directly into the chart interface.
